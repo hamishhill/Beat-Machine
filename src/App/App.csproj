@@ -84,10 +84,6 @@
     </Page>
   </ItemGroup>
   <ItemGroup>
-    <None Include="App_2012_07_28_16_17_15.sap" />
-    <None Include="App_2012_07_28_16_25_34.sap" />
-    <None Include="App_2012_07_28_16_26_30.sap" />
-    <None Include="App_2012_07_28_16_31_22.sap" />
     <None Include="Properties\AppManifest.xml" />
     <None Include="Properties\WMAppManifest.xml" />
   </ItemGroup>

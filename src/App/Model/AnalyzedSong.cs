@@ -13,16 +13,17 @@ using System.Data.Linq.Mapping;
 using System.ComponentModel;
 using System.Collections.ObjectModel;
 using BeatMachine.EchoNest.Model;
+using System.Text;
 
 namespace BeatMachine.Model
 {
     [Table]
     public class AnalyzedSong : Song, INotifyPropertyChanged, INotifyPropertyChanging
     {
-        private string analyzedSongId;
+        private int? analyzedSongId;
 
         [Column(IsPrimaryKey = true, IsDbGenerated = true, DbType = "INT NOT NULL Identity", CanBeNull = false, AutoSync = AutoSync.OnInsert)]
-        public string AnalyzedSongId
+        public int? AnalyzedSongId
         {
             get
             {
@@ -107,6 +108,27 @@ namespace BeatMachine.Model
 
             }
 
+            private string itemId;
+
+            [Column]
+            public string ItemId
+            {
+                get
+                {
+                    return itemId;
+                }
+                set
+                {
+                    if (value != itemId)
+                    {
+                        NotifyPropertyChanging("ItemId");
+                        itemId = value;
+                        NotifyPropertyChanged("ItemId");
+                    }
+                }
+            }
+
+
             [Column]
             public override float? Tempo
             {
@@ -159,13 +181,25 @@ namespace BeatMachine.Model
 
         private EntityRef<AnalyzedSong.Summary> audioSummary;
 
-        [Association(Storage = "audioSummary", ThisKey = "AnalyzedSongId", OtherKey =
-            "SummaryId")]
-        public new AnalyzedSong.Summary AudioSummary
+        [Association(Storage = "audioSummary", ThisKey = "ItemId", OtherKey =
+            "ItemId")]
+        public new Summary AudioSummary
         {
             set { audioSummary.Entity = value; }
             get { return audioSummary.Entity; }
 
+        }
+
+        public override string ToString()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendFormat("{0} by {1}", SongName ?? "?", ArtistName ?? "?");
+            sb.AppendLine();
+            if (AudioSummary != null)
+            {
+                sb.AppendFormat("BPM: {0} ", AudioSummary.Tempo);
+            }
+            return sb.ToString();
         }
 
         #region INotifyPropertyChanged Members

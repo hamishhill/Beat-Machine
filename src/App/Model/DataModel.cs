@@ -191,20 +191,23 @@ namespace BeatMachine.Model
         {
             App thisApp = App.Current as App;
             List<AnalyzedSong> songs = thisApp.Model.AnalyzedSongs;
-            BeatMachineDataContext context = new BeatMachineDataContext(
-                BeatMachineDataContext.DBConnectionString);
 
-
-            lock (songs)
+            using (BeatMachineDataContext context = new BeatMachineDataContext(
+                BeatMachineDataContext.DBConnectionString))
             {
-                var loadedSongs = from AnalyzedSong song
-                                      in context.AnalyzedSongs
-                                  select song;
+                lock (songs)
+                {
+                    var loadedSongs = from AnalyzedSong song
+                                          in context.AnalyzedSongs
+                                      select song;
 
-                songs.AddRange(loadedSongs.ToArray<AnalyzedSong>());
+                    songs.AddRange(loadedSongs.ToArray<AnalyzedSong>());
 
-                thisApp.Model.AnalyzedSongsLoaded = true;
+                    thisApp.Model.AnalyzedSongsLoaded = true;
+                }
             }
+
+
         }
 
         public static void DiffSongs(object state)
@@ -336,43 +339,46 @@ namespace BeatMachine.Model
             if (e.Error == null)
             {
                 App thisApp = App.Current as App;
-                BeatMachineDataContext context = new BeatMachineDataContext(
-                    BeatMachineDataContext.DBConnectionString);
-                
+
                 Catalog cat = (Catalog)e.GetResultData();
 
-                // TODO This check doesn't work well, it won't terminate 
-                // especially in the case where the catalog has more items that
-                // the client doesn't know about
-
-                if (!(cat.Items.Count == 0 &&
-                    context.AnalyzedSongs.Count() >=
-                    thisApp.Model.SongsToAnalyzeBatchSize))
+                using (BeatMachineDataContext context = new BeatMachineDataContext(
+                    BeatMachineDataContext.DBConnectionString))
                 {
-                    context.AnalyzedSongs.InsertAllOnSubmit(
-                        cat.Items.Select<Song, AnalyzedSong>(
-                        s => new AnalyzedSong
-                        {
-                            ItemId = s.Request.ItemId,
-                            ArtistName = s.ArtistName ?? s.Request.ArtistName,
-                            SongName = s.SongName ?? s.Request.SongName,
-                            AudioSummary = s.AudioSummary != null ?
-                                new AnalyzedSong.Summary {
-                                    Tempo = s.AudioSummary.Tempo
-                                } : null
-                        }
-                       ));
-                    context.SubmitChanges();
+                    // TODO This check doesn't work well, it won't terminate 
+                    // especially in the case where the catalog has more items that
+                    // the client doesn't know about
 
-                    downloadSkip = context.AnalyzedSongs.Count();
+                    if (!(cat.Items.Count == 0 &&
+                        context.AnalyzedSongs.Count() >=
+                        thisApp.Model.SongsToAnalyzeBatchSize))
+                    {
+                        context.AnalyzedSongs.InsertAllOnSubmit(
+                            cat.Items.Select<Song, AnalyzedSong>(
+                            s => new AnalyzedSong
+                            {
+                                ItemId = s.Request.ItemId,
+                                ArtistName = s.ArtistName ?? s.Request.ArtistName,
+                                SongName = s.SongName ?? s.Request.SongName,
+                                AudioSummary = s.AudioSummary != null ?
+                                    new AnalyzedSong.Summary
+                                    {
+                                        Tempo = s.AudioSummary.Tempo,
+                                        ItemId = s.Request.ItemId
+                                    } : null                                  
+                            }
+                           ));
+                        context.SubmitChanges();
 
-                    DownloadAnalyzedSongsNeedsToRunAgain();
+                        downloadSkip = context.AnalyzedSongs.Count();
+
+                        DownloadAnalyzedSongsNeedsToRunAgain();
+                    }
+                    else
+                    {
+                        thisApp.Model.SongsToAnalyzeBatchDownloadReady = true;
+                    }
                 }
-                else
-                {
-                    thisApp.Model.SongsToAnalyzeBatchDownloadReady = true;
-                }
-
             } else {
                 DownloadAnalyzedSongsNeedsToRunAgain();
             }

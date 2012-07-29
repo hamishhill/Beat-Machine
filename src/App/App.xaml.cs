@@ -65,10 +65,10 @@ namespace BeatMachine
             using (BeatMachineDataContext db =
                 new BeatMachineDataContext(BeatMachineDataContext.DBConnectionString))
             {
-                if (db.DatabaseExists() == false)
+                if (!db.DatabaseExists())
                 {
                     db.CreateDatabase();
-                    
+
                 }
             }
 

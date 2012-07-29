@@ -13,6 +13,7 @@ using Microsoft.Phone.Controls;
 using BeatMachine.Model;
 using System.Threading;
 using System.Collections.ObjectModel;
+using System.Data.Linq;
 
 namespace BeatMachine
 {
@@ -38,6 +39,9 @@ namespace BeatMachine
                     using (BeatMachineDataContext context = new BeatMachineDataContext(
                         BeatMachineDataContext.DBConnectionString))
                     {
+                        DataLoadOptions dlo = new DataLoadOptions();
+                        dlo.LoadWith<AnalyzedSong>(p => p.AudioSummary);
+                        context.LoadOptions = dlo;
                         songs = context.AnalyzedSongs.ToList();
                     }
 

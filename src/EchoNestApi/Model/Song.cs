@@ -244,7 +244,6 @@ namespace BeatMachine.EchoNest.Model
                 sb.AppendFormat("Lou: {0} ", AudioSummary.Loudness);
                 sb.AppendFormat("Mod: {0} ", AudioSummary.Mode);
                 sb.AppendFormat("Sig {0} ", AudioSummary.TimeSignature);
-                sb.AppendLine();
             }
             return sb.ToString();
         }
