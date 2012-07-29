@@ -153,14 +153,17 @@ namespace BeatMachine.Model
             CatalogId = String.Empty;
         }
 
-        public static void GetSongsOnDevice(object state)
+        private EchoNestApi CreateApiInstance()
         {
-            App thisApp = App.Current as App;
-            List<AnalyzedSong> songs = thisApp.Model.SongsOnDevice;
+            return new EchoNestApi("R2O4VVBVN5EFMCJRP", false);
+        }
+
+        public void GetSongsOnDevice(object state)
+        {
             Dictionary<string, AnalyzedSong> uniqueSongs =
                 new Dictionary<string, AnalyzedSong>();
 
-            lock (songs)
+            lock (SongsOnDevice)
             {
                 using (var mediaLib = new XnaMediaLibrary())
                 {
@@ -177,66 +180,56 @@ namespace BeatMachine.Model
                         
                     }
                     
-                    songs.AddRange(uniqueSongs.Values
+                    SongsOnDevice.AddRange(uniqueSongs.Values
                         .OrderBy(s => s.ArtistName)
                         .ThenBy(s => s.SongName));
                 }
 
-                thisApp.Model.SongsOnDeviceLoaded = true;
+                SongsOnDeviceLoaded = true;
 
             }
         }
 
-        public static void GetAnalyzedSongs(object state)
+        public void GetAnalyzedSongs(object state)
         {
-            App thisApp = App.Current as App;
-            List<AnalyzedSong> songs = thisApp.Model.AnalyzedSongs;
-
             using (BeatMachineDataContext context = new BeatMachineDataContext(
                 BeatMachineDataContext.DBConnectionString))
             {
-                lock (songs)
+                lock (AnalyzedSongs)
                 {
-                    var loadedSongs = from AnalyzedSong song
-                                          in context.AnalyzedSongs
+                    var loadedSongs = from AnalyzedSong song in context.AnalyzedSongs
                                       select song;
 
-                    songs.AddRange(loadedSongs.ToArray<AnalyzedSong>());
-
-                    thisApp.Model.AnalyzedSongsLoaded = true;
+                    AnalyzedSongs.AddRange(loadedSongs.ToArray<AnalyzedSong>());
+                    AnalyzedSongsLoaded = true;
                 }
             }
 
 
         }
 
-        public static void DiffSongs(object state)
-        {
-            App thisApp = App.Current as App;
-            List<AnalyzedSong> analyzedSongs = thisApp.Model.AnalyzedSongs;
-            List<AnalyzedSong> songsOnDevice = thisApp.Model.SongsOnDevice;
-            List<AnalyzedSong> songsToAnalyze = thisApp.Model.SongsToAnalyze;
-         
-            lock (analyzedSongs)
+        public void DiffSongs(object state)
+        {         
+            lock (AnalyzedSongs)
             {       
-                lock (songsOnDevice)
+                lock (SongsOnDevice)
                 {
-                    lock (songsToAnalyze)
+                    lock (SongsToAnalyze)
                     {
-                        List<string> analyzedSongIds = analyzedSongs
+                        List<string> analyzedSongIds = AnalyzedSongs
                             .Select<AnalyzedSong, string>((x) => x.SongId).ToList<string>();
 
-                        if (analyzedSongs.Count != songsOnDevice.Count)
+                        if (AnalyzedSongs.Count != SongsOnDevice.Count)
                         {
-                            foreach (AnalyzedSong song in songsOnDevice)
+                            foreach (AnalyzedSong song in SongsOnDevice)
                             {
                                 if (!analyzedSongIds.Contains(song.SongId))
                                 {
-                                    songsToAnalyze.Add(song);
+                                    SongsToAnalyze.Add(song);
                                 }
                             }
 
-                            thisApp.Model.SongsToAnalyzeLoaded = true;
+                            SongsToAnalyzeLoaded = true;
                         }
                     }
                 }
@@ -244,27 +237,20 @@ namespace BeatMachine.Model
 
         }
 
-        private static EventHandler<EchoNestApiEventArgs> updateHandler =
-            new EventHandler<EchoNestApiEventArgs>(Api_CatalogUpdateCompleted);
-
-        public static void AnalyzeSongs(object state)
+        public void AnalyzeSongs(object state)
         {
-            App thisApp = App.Current as App;
-            if (thisApp.Model.SongsToAnalyzeBatchDownloadReady)
+            if (SongsToAnalyzeBatchDownloadReady)
             {
-                thisApp.Model.SongsToAnalyzeBatchDownloadReady = false;
+                SongsToAnalyzeBatchDownloadReady = false;
             }
-            List<AnalyzedSong> songsToAnalyze = thisApp.Model.SongsToAnalyze;
 
-            lock (songsToAnalyze)
+            EchoNestApi api = CreateApiInstance();
+
+            lock (SongsToAnalyze)
             {
-               
-                // TODO Find a better way to remove all handlers from an event
-                thisApp.Api.CatalogUpdateCompleted -= updateHandler;
-                thisApp.Api.CatalogUpdateCompleted -= updateHandler1;
-                thisApp.Api.CatalogUpdateCompleted += updateHandler;
+                api.CatalogUpdateCompleted += new EventHandler<EchoNestApiEventArgs>(Api_CatalogUpdateCompleted);
 
-                List<CatalogAction<Song>> list = songsToAnalyze
+                List<CatalogAction<Song>> list = SongsToAnalyze
                     .Skip(uploadSkip * uploadTake)
                     .Take(uploadTake)
                     .Select<AnalyzedSong, CatalogAction<Song>>(
@@ -277,54 +263,49 @@ namespace BeatMachine.Model
                     })
                     .ToList();
 
-                thisApp.Model.SongsToAnalyzeBatchSize = list.Count;
+                SongsToAnalyzeBatchSize = list.Count;
 
-                if (thisApp.Model.SongsToAnalyzeBatchSize != 0)
+                if (SongsToAnalyzeBatchSize != 0)
                 {
-                    thisApp.Api.CatalogUpdateAsync(new Catalog
+                    api.CatalogUpdateAsync(new Catalog
                     {
-                        Id = thisApp.Model.CatalogId,
+                        Id = CatalogId,
                         SongActions = list,
                     }, null, null);
                 }
             } 
         }
 
-        static void Api_CatalogUpdateCompleted(object sender, EchoNestApiEventArgs e)
+        void Api_CatalogUpdateCompleted(object sender, EchoNestApiEventArgs e)
         {
             if (e.Error == null)
             {
-                App thisApp = App.Current as App;
-
                 uploadSkip++;
-                thisApp.Model.SongsToAnalyzeBatchUploadReady = true;
+                SongsToAnalyzeBatchUploadReady = true;
 
             }
             else
             {
                 // AnalyzeSongs needs to run again
-                ExecutionQueue.Enqueue(new WaitCallback(DataModel.AnalyzeSongs),
+                ExecutionQueue.Enqueue(new WaitCallback(AnalyzeSongs),
                     ExecutionQueue.Policy.Queued);
             }
         }
     
 
-        public static void DownloadAnalyzedSongs(object state)
+        public void DownloadAnalyzedSongs(object state)
         {
-            App thisApp = App.Current as App;
-            if (thisApp.Model.songsToAnalyzeBatchUploadReady)
+            if (SongsToAnalyzeBatchUploadReady)
             {
                 // First time around in this batch download
                 downloadSkip = 0;
-                thisApp.Model.songsToAnalyzeBatchUploadReady = false;
+                SongsToAnalyzeBatchUploadReady = false;
             };
 
-            EventHandler<EchoNestApiEventArgs> handler =
-                new EventHandler<EchoNestApiEventArgs>(Api_CatalogReadCompleted);
-            thisApp.Api.CatalogReadCompleted -= handler;
-            thisApp.Api.CatalogReadCompleted += handler;
-
-            thisApp.Api.CatalogReadAsync(thisApp.Model.CatalogId,
+            EchoNestApi api = CreateApiInstance();
+            api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(Api_CatalogReadCompleted);
+            
+            api.CatalogReadAsync(CatalogId,
                 new Dictionary<string, string>
             {
                 {"bucket", "audio_summary"},
@@ -334,12 +315,10 @@ namespace BeatMachine.Model
             }, null);
         }
 
-        static void Api_CatalogReadCompleted(object sender, EchoNestApiEventArgs e)
+        void Api_CatalogReadCompleted(object sender, EchoNestApiEventArgs e)
         {
             if (e.Error == null)
             {
-                App thisApp = App.Current as App;
-
                 Catalog cat = (Catalog)e.GetResultData();
 
                 using (BeatMachineDataContext context = new BeatMachineDataContext(
@@ -351,7 +330,7 @@ namespace BeatMachine.Model
 
                     if (!(cat.Items.Count == 0 &&
                         context.AnalyzedSongs.Count() >=
-                        thisApp.Model.SongsToAnalyzeBatchSize))
+                        SongsToAnalyzeBatchSize))
                     {
                         context.AnalyzedSongs.InsertAllOnSubmit(
                             cat.Items.Select<Song, AnalyzedSong>(
@@ -376,7 +355,7 @@ namespace BeatMachine.Model
                     }
                     else
                     {
-                        thisApp.Model.SongsToAnalyzeBatchDownloadReady = true;
+                        SongsToAnalyzeBatchDownloadReady = true;
                     }
                 }
             } else {
@@ -385,9 +364,9 @@ namespace BeatMachine.Model
         }
 
 
-        private static void DownloadAnalyzedSongsNeedsToRunAgain()
+        private void DownloadAnalyzedSongsNeedsToRunAgain()
         {
-            ExecutionQueue.Enqueue(new WaitCallback(DataModel.DownloadAnalyzedSongs),
+            ExecutionQueue.Enqueue(new WaitCallback(DownloadAnalyzedSongs),
                 ExecutionQueue.Policy.Queued);
         }
         
@@ -399,15 +378,14 @@ namespace BeatMachine.Model
         /// 3. If (1) or (2) fails, it will create a new catalog on the 
         /// web service
         /// </summary>
-        public static void LoadCatalogId(object state)
+        public void LoadCatalogId(object state)
         {
-            App thisApp = App.Current as App;
             bool loadedId = false;
             string id;
 
-            lock (thisApp.Model.CatalogId)
+            lock (CatalogId)
             {
-                if (String.IsNullOrEmpty(thisApp.Model.CatalogId))
+                if (String.IsNullOrEmpty(CatalogId))
                 {
                     if (IsolatedStorageSettings.ApplicationSettings.
                         TryGetValue<string>("CatalogId", out id))
@@ -418,7 +396,7 @@ namespace BeatMachine.Model
                 else
                 {
                     loadedId = true;
-                    id = thisApp.Model.CatalogId;
+                    id = CatalogId;
                 }
             }
 
@@ -432,25 +410,18 @@ namespace BeatMachine.Model
             }   
         }
 
-        private static void LoadCatalogIdNeedsToCreateCatalog()
+        private void LoadCatalogIdNeedsToCreateCatalog()
         {
-            App thisApp = App.Current as App;
-
-            EventHandler<EchoNestApiEventArgs> handler =  
-                new EventHandler<EchoNestApiEventArgs>(Api_CatalogCreateCompleted);
-            thisApp.Api.CatalogCreateCompleted -= handler;
-            thisApp.Api.CatalogCreateCompleted += handler;
-
-            thisApp.Api.CatalogCreateAsync(Guid.NewGuid().ToString(), "song", 
+            EchoNestApi api = CreateApiInstance();
+            api.CatalogCreateCompleted += new EventHandler<EchoNestApiEventArgs>(Api_CatalogCreateCompleted);
+            api.CatalogCreateAsync(Guid.NewGuid().ToString(), "song", 
                 null, null);
         }
 
-        static void Api_CatalogCreateCompleted(object sender, EchoNestApiEventArgs e)
+        void Api_CatalogCreateCompleted(object sender, EchoNestApiEventArgs e)
         {
             if (e.Error == null)
             {
-                App thisApp = App.Current as App;
-
                 Catalog cat = (Catalog)e.GetResultData();
 
                 // TODO If isolated storage fails here, then the next time they 
@@ -459,14 +430,14 @@ namespace BeatMachine.Model
                 // practice apparently) as the catalog name to make sure there is
                 // only one catalog created per device ever.
 
-                lock (thisApp.Model.CatalogId)
+                lock (CatalogId)
                 {
                     // Store in isolated storage
                     IsolatedStorageSettings.ApplicationSettings["CatalogId"] =
                         cat.Id;
                     IsolatedStorageSettings.ApplicationSettings.Save();
 
-                    thisApp.Model.CatalogId = cat.Id;
+                    CatalogId = cat.Id;
                 }
             }
             else
@@ -476,19 +447,14 @@ namespace BeatMachine.Model
             }
         }
 
-        private static EventHandler<EchoNestApiEventArgs> updateHandler1 =
-              new EventHandler<EchoNestApiEventArgs>(Api_CatalogUpdateCompleted1);
-
-        private static void LoadCatalogIdNeedsToCheckCatalogId(string id)
+        private void LoadCatalogIdNeedsToCheckCatalogId(string id)
         {
-            App thisApp = App.Current as App;
-
-            thisApp.Api.CatalogUpdateCompleted -= updateHandler1;
-            thisApp.Api.CatalogUpdateCompleted -= updateHandler;
-            thisApp.Api.CatalogUpdateCompleted += updateHandler1;
+            EchoNestApi api = CreateApiInstance();
+            api.CatalogUpdateCompleted +=
+                new EventHandler<EchoNestApiEventArgs>(Api_CatalogUpdateCompleted1);
 
             // Issue dummy update to make sure it's there
-            thisApp.Api.CatalogUpdateAsync(new Catalog
+            api.CatalogUpdateAsync(new Catalog
                 {
                     Id = id,
                     SongActions = new List<CatalogAction<Song>>
@@ -504,7 +470,7 @@ namespace BeatMachine.Model
                 }, null, id);
         }
 
-        static void Api_CatalogUpdateCompleted1(object sender,
+        void Api_CatalogUpdateCompleted1(object sender,
             EchoNestApiEventArgs e)
         {
             if (e.Error != null)
@@ -531,17 +497,16 @@ namespace BeatMachine.Model
             else
             {
                 // This catalog exists, everything is great 
-                App thisApp = App.Current as App;
-                lock (thisApp.Model.CatalogId)
+                lock (CatalogId)
                 {
-                    thisApp.Model.CatalogId = (string)e.UserState;
+                    CatalogId = (string)e.UserState;
                 }
             }
         }
 
-        private static void LoadCatalogIdNeedsToRunAgain()
+        private void LoadCatalogIdNeedsToRunAgain()
         {
-            ExecutionQueue.Enqueue(new WaitCallback(DataModel.LoadCatalogId),
+            ExecutionQueue.Enqueue(new WaitCallback(LoadCatalogId),
                 ExecutionQueue.Policy.Queued);
         }
 

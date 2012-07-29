@@ -80,31 +80,23 @@ namespace BeatMachine
             set;
         }
 
-        public EchoNestApi Api
-        {
-            get;
-            set;
-        }
-
         // Code to execute when the application is launching (eg, from Start)
         // This code will not execute when the application is reactivated
         private void Application_Launching(object sender, LaunchingEventArgs e)
         {
             Model = new Model.DataModel();
-            Api = new EchoNestApi("R2O4VVBVN5EFMCJRP", false);
             bool songsOnDeviceReady = false;
             bool analyzedSongsReady = false;
             bool catalogIdReady = false;
 
-
             ExecutionQueue.Enqueue(
-                new WaitCallback(BeatMachine.Model.DataModel.GetAnalyzedSongs),
+                new WaitCallback(Model.GetAnalyzedSongs),
                 ExecutionQueue.Policy.Immediate);
             ExecutionQueue.Enqueue(
-                new WaitCallback(BeatMachine.Model.DataModel.GetSongsOnDevice),
+                new WaitCallback(Model.GetSongsOnDevice),
                 ExecutionQueue.Policy.Immediate);
             ExecutionQueue.Enqueue(
-                new WaitCallback(BeatMachine.Model.DataModel.LoadCatalogId),
+                new WaitCallback(Model.LoadCatalogId),
                 ExecutionQueue.Policy.Immediate);
             Model.PropertyChanged += new PropertyChangedEventHandler(
                 (pSender, pE) =>
@@ -125,7 +117,7 @@ namespace BeatMachine
                     if (catalogIdReady && songsOnDeviceReady && analyzedSongsReady)
                     {
                         ExecutionQueue.Enqueue(
-                            new WaitCallback(BeatMachine.Model.DataModel.DiffSongs),
+                            new WaitCallback(Model.DiffSongs),
                             ExecutionQueue.Policy.Immediate);
 
                         // Make sure we only run this once
@@ -142,8 +134,7 @@ namespace BeatMachine
                         if ((pSender as DataModel).SongsToAnalyzeLoaded)
                         {
                             ExecutionQueue.Enqueue(
-                                new WaitCallback(
-                                    BeatMachine.Model.DataModel.AnalyzeSongs),
+                                new WaitCallback(Model.AnalyzeSongs),
                                 ExecutionQueue.Policy.Immediate);
                         }
                     }
@@ -152,8 +143,7 @@ namespace BeatMachine
                         if ((pSender as DataModel).SongsToAnalyzeBatchUploadReady)
                         {
                             ExecutionQueue.Enqueue(
-                                new WaitCallback(
-                                    BeatMachine.Model.DataModel.DownloadAnalyzedSongs),
+                                new WaitCallback(Model.DownloadAnalyzedSongs),
                                 ExecutionQueue.Policy.Queued);
                         }
                     }
@@ -162,8 +152,7 @@ namespace BeatMachine
                         if ((pSender as DataModel).SongsToAnalyzeBatchDownloadReady)
                         {
                             ExecutionQueue.Enqueue(
-                                new WaitCallback(
-                                    BeatMachine.Model.DataModel.AnalyzeSongs),
+                                new WaitCallback(Model.AnalyzeSongs),
                                 ExecutionQueue.Policy.Queued);
                         }
                     }
