@@ -346,7 +346,7 @@ namespace BeatMachine.Model
                 // the client doesn't know about
 
                 if (!(cat.Items.Count == 0 &&
-                    context.AnalyzedSongs.Count() ==
+                    context.AnalyzedSongs.Count() >=
                     thisApp.Model.SongsToAnalyzeBatchSize))
                 {
                     context.AnalyzedSongs.InsertAllOnSubmit(

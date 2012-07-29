@@ -11,6 +11,8 @@ using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using Microsoft.Phone.Controls;
 using BeatMachine.Model;
+using System.Threading;
+using System.Collections.ObjectModel;
 
 namespace BeatMachine
 {
@@ -29,31 +31,68 @@ namespace BeatMachine
 
         private void LoadSongs()
         {
-            BeatMachineDataContext context = new BeatMachineDataContext(
-              BeatMachineDataContext.DBConnectionString);
+            ThreadPool.QueueUserWorkItem(new WaitCallback(o =>
+                {
+                    List<AnalyzedSong> songs;
 
-            var songs = context.AnalyzedSongs.ToList();
+                    using (BeatMachineDataContext context = new BeatMachineDataContext(
+                        BeatMachineDataContext.DBConnectionString))
+                    {
+                        songs = context.AnalyzedSongs.ToList();
+                    }
 
-            songsHeader.Header = String.Format("songs ({0})", songs.Count);
+                    songsHeader.Dispatcher.BeginInvoke(() =>
+                        songsHeader.Header = String.Format("songs ({0})", songs.Count)
+                        );
+                    
+                    result.Dispatcher.BeginInvoke(() =>
+                            result.ItemsSource = new ObservableCollection<string>()
+                            );
 
-            if (songs.Count > 0)
-            {
-                result.ItemsSource = songs;
-            }
-            else
-            {
-                result.ItemsSource = new List<string> { "No analyzed songs available" };
-            }
+                    if (songs.Count > 0)
+                    {
+                        // Perf optimization for loading large number of items
+                        // inside ListBox: let the UI thread "breathe" by loading
+                        // in batches
+                        int batchSize = 100;
+                        while (songs.Any())
+                        {
+                            result.Dispatcher.BeginInvoke(() =>
+                            {
+                                foreach (AnalyzedSong s in songs.Take(batchSize))
+                                {
+                                    (result.ItemsSource as ObservableCollection<string>).
+                                        Add(s.ToString());
+                                }
+                                songs = songs.Skip(batchSize).ToList();
+                            });
+                        }
+                    }
+                    else
+                    {
+                        result.Dispatcher.BeginInvoke(() =>
+                            (result.ItemsSource as ObservableCollection<string>).
+                            Add("No analyzed songs available")
+                            );
+                    }
+
+
+                }));
         }
 
         private void Button_Click_1(object sender, RoutedEventArgs e)
         {
-            BeatMachineDataContext context = new BeatMachineDataContext(
-                BeatMachineDataContext.DBConnectionString);
+            ThreadPool.QueueUserWorkItem(new WaitCallback(o =>
+                {
+                    using (BeatMachineDataContext context = new BeatMachineDataContext(
+                        BeatMachineDataContext.DBConnectionString))
+                    {
+                        context.AnalyzedSongs.DeleteAllOnSubmit(
+                            context.AnalyzedSongs.ToList());
+                        context.SubmitChanges();
+                    }
+                }));
 
-            context.AnalyzedSongs.DeleteAllOnSubmit(
-                context.AnalyzedSongs.ToList());
-            context.SubmitChanges();
         }
     }
 }

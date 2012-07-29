@@ -20,35 +20,30 @@
 
             <!--Panorama item one-->
             <controls:PanoramaItem Header="songs" Name="songsHeader">
-                <ScrollViewer>
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="80" />
-                            <RowDefinition />
+                            <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <Button Grid.Row="0" Grid.Column="0" Content="Refresh" Click="Button_Click" />
-                        <ListBox Grid.Row="1" Grid.Column="0" x:Name="result"
-                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListBox Grid.Row="1" Grid.Column="0" x:Name="result">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBox Text="{Binding}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
                     </Grid>
-                </ScrollViewer>
             </controls:PanoramaItem>
 
             <!--Panorama item two-->
             <controls:PanoramaItem Header="options">
-                <ScrollViewer>
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="80" />
                         </Grid.RowDefinitions>
                         <Button Grid.Row="0" Grid.Column="0" Content="Clear local DB" Click="Button_Click_1"/>
                     </Grid>
-                </ScrollViewer>
             </controls:PanoramaItem>
         </controls:Panorama>
     </Grid>
