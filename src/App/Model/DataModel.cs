@@ -12,8 +12,6 @@ using XnaMediaLibrary = Microsoft.Xna.Framework.Media.MediaLibrary;
 
 // TODO Add a logger for debuggin
 
-// TODO Figure out of all the locks are needed
-
 // TODO Unit tests
 
 
@@ -176,31 +174,27 @@ namespace BeatMachine.Model
             Dictionary<string, AnalyzedSong> uniqueSongs =
                 new Dictionary<string, AnalyzedSong>();
 
-            lock (SongsOnDevice)
+            using (var mediaLib = new XnaMediaLibrary())
             {
-                using (var mediaLib = new XnaMediaLibrary())
+                foreach (XnaSong s in mediaLib.Songs)
                 {
-                    foreach(XnaSong s in mediaLib.Songs)
+                    string id = string.Concat(s.Artist.Name, s.Name)
+                        .Replace(" ", "");
+                    uniqueSongs[id] = new AnalyzedSong
                     {
-                        string id = string.Concat(s.Artist.Name, s.Name)
-                            .Replace(" ", "");
-                        uniqueSongs[id] = new AnalyzedSong
-                        {
-                            ItemId = id,
-                            ArtistName = s.Artist.Name,
-                            SongName = s.Name
-                        };
-                        
-                    }
-                    
-                    SongsOnDevice.AddRange(uniqueSongs.Values
-                        .OrderBy(s => s.ArtistName)
-                        .ThenBy(s => s.SongName));
+                        ItemId = id,
+                        ArtistName = s.Artist.Name,
+                        SongName = s.Name
+                    };
+
                 }
 
-                SongsOnDeviceLoaded = true;
-
+                SongsOnDevice.AddRange(uniqueSongs.Values
+                    .OrderBy(s => s.ArtistName)
+                    .ThenBy(s => s.SongName));
             }
+
+            SongsOnDeviceLoaded = true;
         }
 
         public void GetAnalyzedSongs(object state)
@@ -208,53 +202,37 @@ namespace BeatMachine.Model
             using (BeatMachineDataContext context = new BeatMachineDataContext(
                 BeatMachineDataContext.DBConnectionString))
             {
-                lock (AnalyzedSongs)
-                {
-                    var loadedSongs = from AnalyzedSong song in context.AnalyzedSongs
-                                      select song;
+                var loadedSongs = from AnalyzedSong song in context.AnalyzedSongs
+                                  select song;
 
-                    AnalyzedSongs.AddRange(loadedSongs);
-                    AnalyzedSongIds.AddRange(
-                        AnalyzedSongs.Select<AnalyzedSong, string>((x) => x.ItemId));
-                    AnalyzedSongsLoaded = true;
-                }
+                AnalyzedSongs.AddRange(loadedSongs);
+                AnalyzedSongIds.AddRange(
+                    AnalyzedSongs.Select<AnalyzedSong, string>((x) => x.ItemId));
+                AnalyzedSongsLoaded = true;
             }
-
-
         }
 
         public void DiffSongs(object state)
-        {         
-            lock (AnalyzedSongs)
+        {
+            if (AnalyzedSongs.Count != SongsOnDevice.Count)
             {
-                lock (AnalyzedSongIds)
+                foreach (AnalyzedSong song in SongsOnDevice)
                 {
-                    lock (SongsOnDevice)
+                    if (!AnalyzedSongIds.Contains(song.ItemId))
                     {
-                        lock (SongsToAnalyze)
-                        {
-                            if (AnalyzedSongs.Count != SongsOnDevice.Count)
-                            {
-                                foreach (AnalyzedSong song in SongsOnDevice)
-                                {
-                                    if (!AnalyzedSongIds.Contains(song.ItemId))
-                                    {
-                                        SongsToAnalyze.Add(song);
-                                        SongsToAnalyzeIds.Add(song.ItemId);
-                                    }
-                                }
-
-                                // Stop at this point if everything is analyzed
-                                if (SongsToAnalyze.Count != 0)
-                                {
-                                    SongsToAnalyzeLoaded = true;
-                                }
-                            }
-                        }
+                        SongsToAnalyze.Add(song);
+                        SongsToAnalyzeIds.Add(song.ItemId);
                     }
+                }
+
+                // Stop at this point if everything is analyzed
+                if (SongsToAnalyze.Count != 0)
+                {
+                    SongsToAnalyzeLoaded = true;
                 }
             }
         }
+
 
         public void AnalyzeSongs(object state)
         {
@@ -265,36 +243,33 @@ namespace BeatMachine.Model
 
             EchoNestApi api = CreateApiInstance();
 
-            lock (SongsToAnalyze)
+            api.CatalogUpdateCompleted += new EventHandler<EchoNestApiEventArgs>(Api_CatalogUpdateCompleted);
+
+            List<CatalogAction<Song>> list = SongsToAnalyze
+                .Skip(uploadSkip * uploadTake)
+                .Take(uploadTake)
+                .Select<AnalyzedSong, CatalogAction<Song>>(
+                (s) =>
+                {
+                    return new CatalogAction<Song>
+                    {
+                        Item = (Song)s
+                    };
+                })
+                .ToList();
+
+            if (list.Count != 0)
             {
-                api.CatalogUpdateCompleted += new EventHandler<EchoNestApiEventArgs>(Api_CatalogUpdateCompleted);
-
-                List<CatalogAction<Song>> list = SongsToAnalyze
-                    .Skip(uploadSkip * uploadTake)
-                    .Take(uploadTake)
-                    .Select<AnalyzedSong, CatalogAction<Song>>(
-                    (s) =>
-                    {
-                        return new CatalogAction<Song>
-                        {
-                            Item = (Song)s
-                        };
-                    })
-                    .ToList();
-
-                if (list.Count != 0)
+                api.CatalogUpdateAsync(new Catalog
                 {
-                    api.CatalogUpdateAsync(new Catalog
-                    {
-                        Id = CatalogId,
-                        SongActions = list,
-                    }, null, null);
-                }
-                else
-                {
-                    SongsToAnalyzeBatchUploadReady = true;
-                }
-            } 
+                    Id = CatalogId,
+                    SongActions = list,
+                }, null, null);
+            }
+            else
+            {
+                SongsToAnalyzeBatchUploadReady = true;
+            }
         }
 
         void Api_CatalogUpdateCompleted(object sender, EchoNestApiEventArgs e)
@@ -492,21 +467,18 @@ namespace BeatMachine.Model
             bool loadedId = false;
             string id;
 
-            lock (CatalogId)
+            if (String.IsNullOrEmpty(CatalogId))
             {
-                if (String.IsNullOrEmpty(CatalogId))
-                {
-                    if (IsolatedStorageSettings.ApplicationSettings.
-                        TryGetValue<string>("CatalogId", out id))
-                    {
-                        loadedId = true;
-                    }
-                }
-                else
+                if (IsolatedStorageSettings.ApplicationSettings.
+                    TryGetValue<string>("CatalogId", out id))
                 {
                     loadedId = true;
-                    id = CatalogId;
                 }
+            }
+            else
+            {
+                loadedId = true;
+                id = CatalogId;
             }
 
             if (!loadedId)
@@ -539,15 +511,13 @@ namespace BeatMachine.Model
                 // practice apparently) as the catalog name to make sure there is
                 // only one catalog created per device ever.
 
-                lock (CatalogId)
-                {
-                    // Store in isolated storage
-                    IsolatedStorageSettings.ApplicationSettings["CatalogId"] =
-                        cat.Id;
-                    IsolatedStorageSettings.ApplicationSettings.Save();
+                // Store in isolated storage
+                IsolatedStorageSettings.ApplicationSettings["CatalogId"] =
+                    cat.Id;
+                IsolatedStorageSettings.ApplicationSettings.Save();
 
-                    CatalogId = cat.Id;
-                }
+                CatalogId = cat.Id;
+
             }
             else
             {
@@ -601,15 +571,12 @@ namespace BeatMachine.Model
                         LoadCatalogIdNeedsToCreateCatalog();
                     }
                 }
-             
+
             }
             else
             {
                 // This catalog exists, everything is great 
-                lock (CatalogId)
-                {
-                    CatalogId = (string)e.UserState;
-                }
+                CatalogId = (string)e.UserState;
             }
         }
 
