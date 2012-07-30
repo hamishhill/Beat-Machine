@@ -93,6 +93,8 @@ namespace BeatMachine
                     {
                         context.AnalyzedSongs.DeleteAllOnSubmit(
                             context.AnalyzedSongs.ToList());
+                        context.Summary.DeleteAllOnSubmit(
+                            context.Summary.ToList());
                         context.SubmitChanges();
                     }
                 }));

@@ -134,17 +134,8 @@ namespace BeatMachine
                         if ((pSender as DataModel).SongsToAnalyzeLoaded)
                         {
                             ExecutionQueue.Enqueue(
-                                new WaitCallback(Model.AnalyzeSongs),
+                                new WaitCallback(Model.DownloadAnalyzedSongsAlreadyInRemoteCatalog),
                                 ExecutionQueue.Policy.Immediate);
-                        }
-                    }
-                    else if (String.Equals(pE.PropertyName, "SongsToAnalyzeBatchUploadReady"))
-                    {
-                        if ((pSender as DataModel).SongsToAnalyzeBatchUploadReady)
-                        {
-                            ExecutionQueue.Enqueue(
-                                new WaitCallback(Model.DownloadAnalyzedSongs),
-                                ExecutionQueue.Policy.Queued);
                         }
                     }
                     else if (String.Equals(pE.PropertyName, "SongsToAnalyzeBatchDownloadReady"))
@@ -153,6 +144,15 @@ namespace BeatMachine
                         {
                             ExecutionQueue.Enqueue(
                                 new WaitCallback(Model.AnalyzeSongs),
+                                ExecutionQueue.Policy.Queued);
+                        }
+                    }
+                    else if (String.Equals(pE.PropertyName, "SongsToAnalyzeBatchUploadReady"))
+                    {
+                        if ((pSender as DataModel).SongsToAnalyzeBatchUploadReady)
+                        {
+                            ExecutionQueue.Enqueue(
+                                new WaitCallback(Model.DownloadAnalyzedSongs),
                                 ExecutionQueue.Policy.Queued);
                         }
                     }

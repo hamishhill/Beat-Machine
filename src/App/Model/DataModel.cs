@@ -21,13 +21,12 @@ namespace BeatMachine.Model
 {
     public class DataModel : INotifyPropertyChanged
     {
-        private static int uploadTake = 300;
-        private static int uploadSkip = 0;
+        private const int uploadTake = 300;
+        private int uploadSkip = 0;
 
         // More than 100 will fail due to EchoNest hardcoded limit
-        private static int downloadTake = 100;
-        private static int downloadSkip = 0;
-        
+        private const int downloadTake = 100;
+        private int downloadSkip = 0;
 
         private List<AnalyzedSong> songsOnDevice;
         public List<AnalyzedSong> SongsOnDevice
@@ -59,6 +58,17 @@ namespace BeatMachine.Model
             {
                 songsToAnalyze = value;
                 OnPropertyChanged("SongsToAnalyze");
+            }
+        }
+
+        private List<string> songsToAnalyzeIds;
+        public List<string> SongsToAnalyzeIds
+        {
+            get { return songsToAnalyzeIds; }
+            set
+            {
+                songsToAnalyzeIds = value;
+                OnPropertyChanged("SongsToAnalyzeIds");
             }
         }
 
@@ -95,16 +105,6 @@ namespace BeatMachine.Model
             }
         }
 
-        private int songsToAnalyzeBatchSize;
-        public int SongsToAnalyzeBatchSize
-        {
-            get { return songsToAnalyzeBatchSize; }
-            set
-            {
-                songsToAnalyzeBatchSize = value;
-                OnPropertyChanged("SongsToAnalyzeBatchSize");
-            }
-        }
 
         private List<AnalyzedSong> analyzedSongs;
         public List<AnalyzedSong> AnalyzedSongs
@@ -113,6 +113,17 @@ namespace BeatMachine.Model
             set {
                 analyzedSongs = value;
                 OnPropertyChanged("AnalyzedSongs"); 
+            }
+        }
+
+        private List<string> analyzedSongIds;
+        public List<string> AnalyzedSongIds
+        {
+            get { return analyzedSongIds; }
+            set
+            {
+                analyzedSongIds = value;
+                OnPropertyChanged("AnalyzedSongIds");
             }
         }
 
@@ -145,9 +156,11 @@ namespace BeatMachine.Model
             SongsOnDeviceLoaded = false;
 
             AnalyzedSongs = new List<AnalyzedSong>();
+            AnalyzedSongIds = new List<string>();
             AnalyzedSongsLoaded = false;
 
             SongsToAnalyze = new List<AnalyzedSong>();
+            SongsToAnalyzeIds = new List<string>();
             SongsToAnalyzeLoaded = false;
 
             CatalogId = String.Empty;
@@ -200,7 +213,9 @@ namespace BeatMachine.Model
                     var loadedSongs = from AnalyzedSong song in context.AnalyzedSongs
                                       select song;
 
-                    AnalyzedSongs.AddRange(loadedSongs.ToArray<AnalyzedSong>());
+                    AnalyzedSongs.AddRange(loadedSongs);
+                    AnalyzedSongIds.AddRange(
+                        AnalyzedSongs.Select<AnalyzedSong, string>((x) => x.ItemId));
                     AnalyzedSongsLoaded = true;
                 }
             }
@@ -211,30 +226,34 @@ namespace BeatMachine.Model
         public void DiffSongs(object state)
         {         
             lock (AnalyzedSongs)
-            {       
-                lock (SongsOnDevice)
+            {
+                lock (AnalyzedSongIds)
                 {
-                    lock (SongsToAnalyze)
+                    lock (SongsOnDevice)
                     {
-                        List<string> analyzedSongIds = AnalyzedSongs
-                            .Select<AnalyzedSong, string>((x) => x.SongId).ToList<string>();
-
-                        if (AnalyzedSongs.Count != SongsOnDevice.Count)
+                        lock (SongsToAnalyze)
                         {
-                            foreach (AnalyzedSong song in SongsOnDevice)
+                            if (AnalyzedSongs.Count != SongsOnDevice.Count)
                             {
-                                if (!analyzedSongIds.Contains(song.SongId))
+                                foreach (AnalyzedSong song in SongsOnDevice)
                                 {
-                                    SongsToAnalyze.Add(song);
+                                    if (!AnalyzedSongIds.Contains(song.ItemId))
+                                    {
+                                        SongsToAnalyze.Add(song);
+                                        SongsToAnalyzeIds.Add(song.ItemId);
+                                    }
+                                }
+
+                                // Stop at this point if everything is analyzed
+                                if (SongsToAnalyze.Count != 0)
+                                {
+                                    SongsToAnalyzeLoaded = true;
                                 }
                             }
-
-                            SongsToAnalyzeLoaded = true;
                         }
                     }
                 }
             }
-
         }
 
         public void AnalyzeSongs(object state)
@@ -263,15 +282,17 @@ namespace BeatMachine.Model
                     })
                     .ToList();
 
-                SongsToAnalyzeBatchSize = list.Count;
-
-                if (SongsToAnalyzeBatchSize != 0)
+                if (list.Count != 0)
                 {
                     api.CatalogUpdateAsync(new Catalog
                     {
                         Id = CatalogId,
                         SongActions = list,
                     }, null, null);
+                }
+                else
+                {
+                    SongsToAnalyzeBatchUploadReady = true;
                 }
             } 
         }
@@ -281,15 +302,97 @@ namespace BeatMachine.Model
             if (e.Error == null)
             {
                 uploadSkip++;
-                SongsToAnalyzeBatchUploadReady = true;
+            }
+            AnalyzeSongsNeedsToRunAgain();
+        }
 
+        private void AnalyzeSongsNeedsToRunAgain()
+        {
+            ExecutionQueue.Enqueue(new WaitCallback(AnalyzeSongs),
+                ExecutionQueue.Policy.Queued);
+        }
+
+
+        public void DownloadAnalyzedSongsAlreadyInRemoteCatalog(object state)
+        {
+            EchoNestApi api = CreateApiInstance();
+            api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(api_CatalogReadCompleted);
+
+            api.CatalogReadAsync(CatalogId,
+                new Dictionary<string, string>
+                {
+                    {"bucket", "audio_summary"},
+                    {"results", downloadTake.ToString()},
+                    {"start", (downloadSkip * downloadTake).ToString()} 
+                 }, null);
+        }
+
+        void api_CatalogReadCompleted(object sender, EchoNestApiEventArgs e)
+        {
+            if (e.Error == null)
+            {
+                Catalog cat = (Catalog)e.GetResultData();
+
+                if (cat.Items.Count > 0)
+                {
+                    var analyzedSongs = cat.Items.
+                        Select<Song, AnalyzedSong>(s => new AnalyzedSong
+                        {
+                            ItemId = s.Request.ItemId,
+                            ArtistName = s.ArtistName ?? s.Request.ArtistName,
+                            SongName = s.SongName ?? s.Request.SongName,
+                            AudioSummary = s.AudioSummary != null ?
+                            new AnalyzedSong.Summary
+                            {
+                                Tempo = s.AudioSummary.Tempo,
+                                ItemId = s.Request.ItemId
+                            } : null
+                        }).
+                        Where<AnalyzedSong>(s => SongsToAnalyzeIds.Contains(s.ItemId));
+
+
+                    if (analyzedSongs.Count<AnalyzedSong>() > 0)
+                    {
+                        using (BeatMachineDataContext context = new BeatMachineDataContext(
+                            BeatMachineDataContext.DBConnectionString))
+                        {
+                            context.AnalyzedSongs.InsertAllOnSubmit(analyzedSongs);
+                            context.SubmitChanges();
+                        }
+
+                        foreach (AnalyzedSong s in analyzedSongs)
+                        {
+                            SongsToAnalyze.Remove(
+                                SongsToAnalyze.Where(x => String.Equals(x.ItemId, s.ItemId)).First());
+                            SongsToAnalyzeIds.Remove(s.ItemId);
+                        }
+                    }
+                }
+
+                if (cat.Items.Count == downloadTake)
+                {
+                    // We grabbed a full downloadTake number of items, so
+                    // there must be more items
+                    downloadSkip++;
+                    DownloadAnalyzedSongsAlreadyInRemoteCatalogNeedsToRunAgain();
+                }
+                else
+                {
+                    // If we grabbed less than that, then there are no more items
+                    SongsToAnalyzeBatchDownloadReady = true;
+
+                }
             }
             else
             {
-                // AnalyzeSongs needs to run again
-                ExecutionQueue.Enqueue(new WaitCallback(AnalyzeSongs),
-                    ExecutionQueue.Policy.Queued);
+                DownloadAnalyzedSongsAlreadyInRemoteCatalogNeedsToRunAgain();
             }
+        }
+
+        private void DownloadAnalyzedSongsAlreadyInRemoteCatalogNeedsToRunAgain()
+        {
+            ExecutionQueue.Enqueue(new WaitCallback(DownloadAnalyzedSongsAlreadyInRemoteCatalog),
+               ExecutionQueue.Policy.Queued);
         }
     
 
@@ -298,21 +401,21 @@ namespace BeatMachine.Model
             if (SongsToAnalyzeBatchUploadReady)
             {
                 // First time around in this batch download
-                downloadSkip = 0;
                 SongsToAnalyzeBatchUploadReady = false;
+                downloadSkip = 0;
             };
 
-            EchoNestApi api = CreateApiInstance();
-            api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(Api_CatalogReadCompleted);
-            
-            api.CatalogReadAsync(CatalogId,
-                new Dictionary<string, string>
+            if (SongsToAnalyze.Count != 0)
             {
-                {"bucket", "audio_summary"},
-                {"results", downloadTake.ToString()},
-                {"start", downloadSkip.ToString()} 
+                EchoNestApi api = CreateApiInstance();
+                api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(Api_CatalogReadCompleted);
 
-            }, null);
+                api.CatalogReadAsync(CatalogId, new Dictionary<string, string>{
+                    {"bucket", "audio_summary"},
+                    {"results", downloadTake.ToString()},
+                    {"start", (downloadSkip * downloadTake).ToString()}
+                }, null);
+            }
         }
 
         void Api_CatalogReadCompleted(object sender, EchoNestApiEventArgs e)
@@ -321,55 +424,61 @@ namespace BeatMachine.Model
             {
                 Catalog cat = (Catalog)e.GetResultData();
 
-                using (BeatMachineDataContext context = new BeatMachineDataContext(
-                    BeatMachineDataContext.DBConnectionString))
+                if (cat.Items.Count > 0)
                 {
-                    // TODO This check doesn't work well, it won't terminate 
-                    // especially in the case where the catalog has more items that
-                    // the client doesn't know about
-
-                    if (!(cat.Items.Count == 0 &&
-                        context.AnalyzedSongs.Count() >=
-                        SongsToAnalyzeBatchSize))
-                    {
-                        context.AnalyzedSongs.InsertAllOnSubmit(
-                            cat.Items.Select<Song, AnalyzedSong>(
-                            s => new AnalyzedSong
+                    var analyzedSongs = cat.Items.
+                        Select<Song, AnalyzedSong>(s => new AnalyzedSong
+                        {
+                            ItemId = s.Request.ItemId,
+                            ArtistName = s.ArtistName ?? s.Request.ArtistName,
+                            SongName = s.SongName ?? s.Request.SongName,
+                            AudioSummary = s.AudioSummary != null ?
+                            new AnalyzedSong.Summary
                             {
-                                ItemId = s.Request.ItemId,
-                                ArtistName = s.ArtistName ?? s.Request.ArtistName,
-                                SongName = s.SongName ?? s.Request.SongName,
-                                AudioSummary = s.AudioSummary != null ?
-                                    new AnalyzedSong.Summary
-                                    {
-                                        Tempo = s.AudioSummary.Tempo,
-                                        ItemId = s.Request.ItemId
-                                    } : null                                  
-                            }
-                           ));
-                        context.SubmitChanges();
+                                Tempo = s.AudioSummary.Tempo,
+                                ItemId = s.Request.ItemId
+                            } : null
+                        }).
+                        Where<AnalyzedSong>(s => SongsToAnalyzeIds.Contains(s.ItemId));
 
-                        downloadSkip = context.AnalyzedSongs.Count();
 
-                        DownloadAnalyzedSongsNeedsToRunAgain();
+                    if (analyzedSongs.Count<AnalyzedSong>() > 0)
+                    {
+                        using (BeatMachineDataContext context = new BeatMachineDataContext(
+                            BeatMachineDataContext.DBConnectionString))
+                        {
+                            context.AnalyzedSongs.InsertAllOnSubmit(analyzedSongs);
+                            context.SubmitChanges();
+                        }
+
+                        foreach (AnalyzedSong s in analyzedSongs)
+                        {
+                            SongsToAnalyze.Remove(
+                               SongsToAnalyze.Where(x => String.Equals(x.ItemId, s.ItemId)).First());
+                            SongsToAnalyzeIds.Remove(s.ItemId);
+                        }
+                    }
+
+                    if (cat.Items.Count == downloadTake)
+                    {
+                        downloadSkip++;
                     }
                     else
                     {
-                        SongsToAnalyzeBatchDownloadReady = true;
+                        downloadSkip = 0;
                     }
                 }
-            } else {
-                DownloadAnalyzedSongsNeedsToRunAgain();
             }
+            DownloadAnalyzedSongsNeedsToRunAgain();
         }
-
 
         private void DownloadAnalyzedSongsNeedsToRunAgain()
         {
             ExecutionQueue.Enqueue(new WaitCallback(DownloadAnalyzedSongs),
                 ExecutionQueue.Policy.Queued);
         }
-        
+
+   
         /// <summary>
         /// Ensures Model.CatalogId is populated. Will try the following:
         /// 1. Try loading it from the "CatalogId" setting in storage
