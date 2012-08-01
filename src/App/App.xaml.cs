@@ -61,17 +61,6 @@ namespace BeatMachine
                 PhoneApplicationService.Current.UserIdleDetectionMode = IdleDetectionMode.Disabled;
             }
 
-            // Create the database if it does not exist.
-            using (BeatMachineDataContext db =
-                new BeatMachineDataContext(BeatMachineDataContext.DBConnectionString))
-            {
-                if (!db.DatabaseExists())
-                {
-                    db.CreateDatabase();
-
-                }
-            }
-
         }
 
         public Model.DataModel Model
@@ -84,6 +73,17 @@ namespace BeatMachine
         // This code will not execute when the application is reactivated
         private void Application_Launching(object sender, LaunchingEventArgs e)
         {
+            // Create the database if it does not exist.
+            using (BeatMachineDataContext db =
+                new BeatMachineDataContext(BeatMachineDataContext.DBConnectionString))
+            {
+                if (!db.DatabaseExists())
+                {
+                    db.CreateDatabase();
+
+                }
+            }
+
             Model = new Model.DataModel();
             bool songsOnDeviceReady = false;
             bool analyzedSongsReady = false;
@@ -163,22 +163,25 @@ namespace BeatMachine
         // This code will not execute when the application is first launched
         private void Application_Activated(object sender, ActivatedEventArgs e)
         {
-            IDictionary<string, object> state =
-                PhoneApplicationService.Current.State;
-            state["Model"] = Model;
+            if (!e.IsApplicationInstancePreserved)
+            {
+                IDictionary<string, object> state =
+                    PhoneApplicationService.Current.State;
+
+                if (state.ContainsKey("Model"))
+                {
+                    Model = (Model.DataModel)state["Model"];
+                }
+            }
         }
 
         // Code to execute when the application is deactivated (sent to background)
         // This code will not execute when the application is closing
         private void Application_Deactivated(object sender, DeactivatedEventArgs e)
         {
-            IDictionary<string, object> state = 
-                PhoneApplicationService.Current.State;
-            
-            if (state.ContainsKey("Model"))
-            {
-                Model = (Model.DataModel)state["Model"];
-            }
+            IDictionary<string, object> state =
+                 PhoneApplicationService.Current.State;
+            state["Model"] = Model;
         }
 
         // Code to execute when the application is closing (eg, user hit Back)

@@ -10,10 +10,9 @@ using BeatMachine.EchoNest.Model;
 using XnaSong = Microsoft.Xna.Framework.Media.Song;
 using XnaMediaLibrary = Microsoft.Xna.Framework.Media.MediaLibrary;
 
-// TODO Add a logger for debuggin
+// TODO Add a logger for debugging
 
 // TODO Unit tests
-
 
 namespace BeatMachine.Model
 {
@@ -25,6 +24,17 @@ namespace BeatMachine.Model
         // More than 100 will fail due to EchoNest hardcoded limit
         private const int downloadTake = 100;
         private int downloadSkip = 0;
+
+        private string catalogId;
+        public string CatalogId
+        {
+            get { return catalogId; }
+            set
+            {
+                catalogId = value;
+                OnPropertyChanged("CatalogId");
+            }
+        }
 
         private List<AnalyzedSong> songsOnDevice;
         public List<AnalyzedSong> SongsOnDevice
@@ -45,6 +55,39 @@ namespace BeatMachine.Model
             {
                 songsOnDeviceLoaded = value;
                 OnPropertyChanged("SongsOnDeviceLoaded");
+            }
+        }
+
+        private List<AnalyzedSong> analyzedSongs;
+        public List<AnalyzedSong> AnalyzedSongs
+        {
+            get { return analyzedSongs; }
+            set
+            {
+                analyzedSongs = value;
+                OnPropertyChanged("AnalyzedSongs");
+            }
+        }
+
+        private List<string> analyzedSongIds;
+        public List<string> AnalyzedSongIds
+        {
+            get { return analyzedSongIds; }
+            set
+            {
+                analyzedSongIds = value;
+                OnPropertyChanged("AnalyzedSongIds");
+            }
+        }
+
+        private bool analyzedSongsLoaded;
+        public bool AnalyzedSongsLoaded
+        {
+            get { return analyzedSongsLoaded; }
+            set
+            {
+                analyzedSongsLoaded = value;
+                OnPropertyChanged("AnalyzedSongsLoaded");
             }
         }
 
@@ -104,49 +147,7 @@ namespace BeatMachine.Model
         }
 
 
-        private List<AnalyzedSong> analyzedSongs;
-        public List<AnalyzedSong> AnalyzedSongs
-        {
-            get { return analyzedSongs; }
-            set {
-                analyzedSongs = value;
-                OnPropertyChanged("AnalyzedSongs"); 
-            }
-        }
 
-        private List<string> analyzedSongIds;
-        public List<string> AnalyzedSongIds
-        {
-            get { return analyzedSongIds; }
-            set
-            {
-                analyzedSongIds = value;
-                OnPropertyChanged("AnalyzedSongIds");
-            }
-        }
-
-        private bool analyzedSongsLoaded;
-        public bool AnalyzedSongsLoaded
-        {
-            get { return analyzedSongsLoaded; }
-            set
-            {
-                analyzedSongsLoaded = value;
-                OnPropertyChanged("AnalyzedSongsLoaded");
-            }
-        }
-
-
-        private string catalogId;
-        public string CatalogId
-        {
-            get { return catalogId; }
-            set
-            {
-                catalogId = value;
-                OnPropertyChanged("CatalogId");
-            }
-        }
 
         public DataModel()
         {
@@ -202,6 +203,7 @@ namespace BeatMachine.Model
             using (BeatMachineDataContext context = new BeatMachineDataContext(
                 BeatMachineDataContext.DBConnectionString))
             {
+                context.DeferredLoadingEnabled = false;
                 var loadedSongs = from AnalyzedSong song in context.AnalyzedSongs
                                   select song;
 
@@ -243,7 +245,8 @@ namespace BeatMachine.Model
 
             EchoNestApi api = CreateApiInstance();
 
-            api.CatalogUpdateCompleted += new EventHandler<EchoNestApiEventArgs>(Api_CatalogUpdateCompleted);
+            api.CatalogUpdateCompleted += new EventHandler<EchoNestApiEventArgs>(
+                AnalyzeSongs_CatalogUpdateCompleted);
 
             List<CatalogAction<Song>> list = SongsToAnalyze
                 .Skip(uploadSkip * uploadTake)
@@ -272,7 +275,7 @@ namespace BeatMachine.Model
             }
         }
 
-        void Api_CatalogUpdateCompleted(object sender, EchoNestApiEventArgs e)
+        void AnalyzeSongs_CatalogUpdateCompleted(object sender, EchoNestApiEventArgs e)
         {
             if (e.Error == null)
             {
@@ -291,7 +294,8 @@ namespace BeatMachine.Model
         public void DownloadAnalyzedSongsAlreadyInRemoteCatalog(object state)
         {
             EchoNestApi api = CreateApiInstance();
-            api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(api_CatalogReadCompleted);
+            api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(
+                DownloadAnalyzedSongsAlreadyInRemoteCatalog_CatalogReadCompleted);
 
             api.CatalogReadAsync(CatalogId,
                 new Dictionary<string, string>
@@ -302,7 +306,8 @@ namespace BeatMachine.Model
                  }, null);
         }
 
-        void api_CatalogReadCompleted(object sender, EchoNestApiEventArgs e)
+        void DownloadAnalyzedSongsAlreadyInRemoteCatalog_CatalogReadCompleted(
+            object sender, EchoNestApiEventArgs e)
         {
             if (e.Error == null)
             {
@@ -366,11 +371,11 @@ namespace BeatMachine.Model
 
         private void DownloadAnalyzedSongsAlreadyInRemoteCatalogNeedsToRunAgain()
         {
-            ExecutionQueue.Enqueue(new WaitCallback(DownloadAnalyzedSongsAlreadyInRemoteCatalog),
+            ExecutionQueue.Enqueue(
+                new WaitCallback(DownloadAnalyzedSongsAlreadyInRemoteCatalog),
                ExecutionQueue.Policy.Queued);
         }
     
-
         public void DownloadAnalyzedSongs(object state)
         {
             if (SongsToAnalyzeBatchUploadReady)
@@ -383,7 +388,8 @@ namespace BeatMachine.Model
             if (SongsToAnalyze.Count != 0)
             {
                 EchoNestApi api = CreateApiInstance();
-                api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(Api_CatalogReadCompleted);
+                api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(
+                    DownloadAnalyzedSongs_CatalogReadCompleted);
 
                 api.CatalogReadAsync(CatalogId, new Dictionary<string, string>{
                     {"bucket", "audio_summary"},
@@ -393,7 +399,8 @@ namespace BeatMachine.Model
             }
         }
 
-        void Api_CatalogReadCompleted(object sender, EchoNestApiEventArgs e)
+        void DownloadAnalyzedSongs_CatalogReadCompleted(
+            object sender, EchoNestApiEventArgs e)
         {
             if (e.Error == null)
             {
@@ -494,12 +501,14 @@ namespace BeatMachine.Model
         private void LoadCatalogIdNeedsToCreateCatalog()
         {
             EchoNestApi api = CreateApiInstance();
-            api.CatalogCreateCompleted += new EventHandler<EchoNestApiEventArgs>(Api_CatalogCreateCompleted);
+            api.CatalogCreateCompleted += new EventHandler<EchoNestApiEventArgs>(
+                LoadCatalogIdNeedsToCreateCatalog_CatalogCreateCompleted);
             api.CatalogCreateAsync(Guid.NewGuid().ToString(), "song", 
                 null, null);
         }
 
-        void Api_CatalogCreateCompleted(object sender, EchoNestApiEventArgs e)
+        void LoadCatalogIdNeedsToCreateCatalog_CatalogCreateCompleted(
+            object sender, EchoNestApiEventArgs e)
         {
             if (e.Error == null)
             {
@@ -530,7 +539,8 @@ namespace BeatMachine.Model
         {
             EchoNestApi api = CreateApiInstance();
             api.CatalogUpdateCompleted +=
-                new EventHandler<EchoNestApiEventArgs>(Api_CatalogUpdateCompleted1);
+                new EventHandler<EchoNestApiEventArgs>(
+                    LoadCatalogIdNeedsToCheckCatalogId_CatalogUpdateCompleted);
 
             // Issue dummy update to make sure it's there
             api.CatalogUpdateAsync(new Catalog
@@ -549,8 +559,8 @@ namespace BeatMachine.Model
                 }, null, id);
         }
 
-        void Api_CatalogUpdateCompleted1(object sender,
-            EchoNestApiEventArgs e)
+        void LoadCatalogIdNeedsToCheckCatalogId_CatalogUpdateCompleted(
+            object sender, EchoNestApiEventArgs e)
         {
             if (e.Error != null)
             {
