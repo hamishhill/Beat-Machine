@@ -194,9 +194,9 @@ namespace BeatMachine.Model
         {
             StringBuilder sb = new StringBuilder();
             sb.AppendFormat("{0} by {1}", SongName ?? "?", ArtistName ?? "?");
-            sb.AppendLine();
             if (AudioSummary != null)
             {
+                sb.AppendLine();
                 sb.AppendFormat("BPM: {0} ", AudioSummary.Tempo);
             }
             return sb.ToString();

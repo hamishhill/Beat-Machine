@@ -7,6 +7,12 @@
 
     <!--Application Resources-->
     <Application.Resources>
+        <shell:ApplicationBar IsVisible="True" x:Key="AppBar">
+            <shell:ApplicationBarIconButton IconUri="/Images/appbar.transport.play.rest.png" 
+                                            Text="Play" Click="PlayApplicationBarButton_Click" />
+            <shell:ApplicationBarIconButton IconUri="/Images/appbar.feature.settings.rest.png" 
+                                            Text="Settings" Click="SettingsApplicationBarButton_Click" />
+        </shell:ApplicationBar>
     </Application.Resources>
 
     <Application.ApplicationLifetimeObjects>

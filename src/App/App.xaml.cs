@@ -16,11 +16,14 @@ using System.Threading;
 using BeatMachine.EchoNest;
 using System.ComponentModel;
 using BeatMachine.Model;
+using NLog;
 
 namespace BeatMachine
 {
     public partial class App : Application
     {
+        private static Logger logger;
+
         /// <summary>
         /// Provides easy access to the root frame of the Phone Application.
         /// </summary>
@@ -61,6 +64,8 @@ namespace BeatMachine
                 PhoneApplicationService.Current.UserIdleDetectionMode = IdleDetectionMode.Disabled;
             }
 
+            logger = LogManager.GetCurrentClassLogger();
+
         }
 
         public Model.DataModel Model
@@ -79,8 +84,12 @@ namespace BeatMachine
             {
                 if (!db.DatabaseExists())
                 {
+                    logger.Info("Creating new database");
                     db.CreateDatabase();
-
+                }
+                else
+                {
+                    logger.Info("Database exists already");
                 }
             }
 
@@ -245,5 +254,15 @@ namespace BeatMachine
         }
 
         #endregion
+
+        private void PlayApplicationBarButton_Click(object sender, EventArgs e)
+        {
+            RootFrame.Navigate(new Uri("/Play.xaml", UriKind.RelativeOrAbsolute));
+        }
+
+        private void SettingsApplicationBarButton_Click(object sender, EventArgs e)
+        {
+            RootFrame.Navigate(new Uri("/Settings.xaml", UriKind.RelativeOrAbsolute));
+        }
     }
 }

@@ -10,11 +10,14 @@ using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Threading;
 using System.Collections.Generic;
+using NLog;
 
 namespace BeatMachine
 {
     public static class ExecutionQueue
     {
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
         public enum Policy
         {
             Immediate,
@@ -45,6 +48,8 @@ namespace BeatMachine
             {
                 if (queue.Count != 0)
                 {
+                    logger.Info("Dequeuing and running callback {0}",
+                        queue[0].Method.Name);
                     ThreadPool.QueueUserWorkItem(queue[0]);
                     cooledDown = false;
                     queue.RemoveAt(0);
@@ -64,6 +69,8 @@ namespace BeatMachine
             switch(policy)
             {
                 case Policy.Immediate:
+                    logger.Info("Immediately running callback {0}",
+                        callback.Method.Name);
                     ThreadPool.QueueUserWorkItem(new WaitCallback(callback));
                     break;
                 case Policy.Queued:
@@ -71,11 +78,15 @@ namespace BeatMachine
                     {
                         if (cooledDown)
                         {
+                            logger.Info("Immediately putting callback {0}",
+                                callback.Method.Name);
                             ThreadPool.QueueUserWorkItem(
                                 new WaitCallback(callback));
                         }
                         else
                         {
+                            logger.Debug("Queuing callback {0} for later execution",
+                                callback.Method.Name);
                             queue.Add(callback);
                         }
                     }
