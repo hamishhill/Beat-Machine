@@ -1,31 +1,30 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO.IsolatedStorage;
 using System.Linq;
 using System.Threading;
 using BeatMachine.EchoNest;
-using System.ComponentModel;
-using System.Collections.ObjectModel;
 using BeatMachine.EchoNest.Model;
-using XnaSong = Microsoft.Xna.Framework.Media.Song;
-using XnaMediaLibrary = Microsoft.Xna.Framework.Media.MediaLibrary;
 using NLog;
+using XnaMediaLibrary = Microsoft.Xna.Framework.Media.MediaLibrary;
+using XnaSong = Microsoft.Xna.Framework.Media.Song;
 
 // TODO Unit tests
 
 namespace BeatMachine.Model
 {
-    public class DataModel : INotifyPropertyChanged
+    public class DataModel : PropertyChangedBase
     {
         private const int uploadTake = 300;
-        private int uploadSkip = 0;
-
         // More than 100 will fail due to EchoNest hardcoded limit
         private const int downloadTake = 100;
-        private int downloadSkip = 0;
 
         private static Logger logger = LogManager.GetCurrentClassLogger();
 
+        public int UploadSkip { get; set; }
+        public int DownloadSkip { get; set; }
+                
         private string catalogId;
         public string CatalogId
         {
@@ -33,20 +32,11 @@ namespace BeatMachine.Model
             set
             {
                 catalogId = value;
-                OnPropertyChanged("CatalogId");
+                NotifyPropertyChanged("CatalogId");
             }
         }
 
-        private List<AnalyzedSong> songsOnDevice;
-        public List<AnalyzedSong> SongsOnDevice
-        {
-            get { return songsOnDevice; }
-            set
-            {
-                songsOnDevice = value; 
-                OnPropertyChanged("SongsOnDevice"); 
-            }
-        }
+        public List<AnalyzedSong> SongsOnDevice { get; set; }
 
         private bool songsOnDeviceLoaded;
         public bool SongsOnDeviceLoaded
@@ -55,31 +45,13 @@ namespace BeatMachine.Model
             set
             {
                 songsOnDeviceLoaded = value;
-                OnPropertyChanged("SongsOnDeviceLoaded");
+                NotifyPropertyChanged("SongsOnDeviceLoaded");
             }
         }
 
-        private List<AnalyzedSong> analyzedSongs;
-        public List<AnalyzedSong> AnalyzedSongs
-        {
-            get { return analyzedSongs; }
-            set
-            {
-                analyzedSongs = value;
-                OnPropertyChanged("AnalyzedSongs");
-            }
-        }
-
-        private List<string> analyzedSongIds;
-        public List<string> AnalyzedSongIds
-        {
-            get { return analyzedSongIds; }
-            set
-            {
-                analyzedSongIds = value;
-                OnPropertyChanged("AnalyzedSongIds");
-            }
-        }
+        
+        public List<AnalyzedSong> AnalyzedSongs { get; set; }
+        public List<string> AnalyzedSongIds { get; set; }
 
         private bool analyzedSongsLoaded;
         public bool AnalyzedSongsLoaded
@@ -88,31 +60,12 @@ namespace BeatMachine.Model
             set
             {
                 analyzedSongsLoaded = value;
-                OnPropertyChanged("AnalyzedSongsLoaded");
+                NotifyPropertyChanged("AnalyzedSongsLoaded");
             }
         }
 
-        private List<AnalyzedSong> songsToAnalyze;
-        public List<AnalyzedSong> SongsToAnalyze
-        {
-            get { return songsToAnalyze; }
-            set
-            {
-                songsToAnalyze = value;
-                OnPropertyChanged("SongsToAnalyze");
-            }
-        }
-
-        private List<string> songsToAnalyzeIds;
-        public List<string> SongsToAnalyzeIds
-        {
-            get { return songsToAnalyzeIds; }
-            set
-            {
-                songsToAnalyzeIds = value;
-                OnPropertyChanged("SongsToAnalyzeIds");
-            }
-        }
+        public List<AnalyzedSong> SongsToAnalyze { get; set; }
+        public List<string> SongsToAnalyzeIds { get; set;}
 
         private bool songsToAnalyzeLoaded;
         public bool SongsToAnalyzeLoaded
@@ -121,7 +74,18 @@ namespace BeatMachine.Model
             set
             {
                 songsToAnalyzeLoaded = value;
-                OnPropertyChanged("SongsToAnalyzeLoaded");
+                NotifyPropertyChanged("SongsToAnalyzeLoaded");
+            }
+        }
+
+        private bool allDone;
+        public bool AllDone
+        {
+            get { return allDone; }
+            set
+            {
+                allDone = value;
+                NotifyPropertyChanged("AllDone");
             }
         }
 
@@ -132,7 +96,7 @@ namespace BeatMachine.Model
             set
             {
                 songsToAnalyzeBatchUploadReady = value;
-                OnPropertyChanged("SongsToAnalyzeBatchUploadReady");
+                NotifyPropertyChanged("SongsToAnalyzeBatchUploadReady");
             }
         }
 
@@ -143,14 +107,16 @@ namespace BeatMachine.Model
             set
             {
                 songsToAnalyzeBatchDownloadReady = value;
-                OnPropertyChanged("SongsToAnalyzeBatchDownloadReady");
+                NotifyPropertyChanged("SongsToAnalyzeBatchDownloadReady");
             }
         }
 
-
-
-
         public DataModel()
+        {
+           
+        }
+
+        public void Initialize()
         {
             SongsOnDevice = new List<AnalyzedSong>();
             SongsOnDeviceLoaded = false;
@@ -164,13 +130,113 @@ namespace BeatMachine.Model
             SongsToAnalyzeLoaded = false;
 
             CatalogId = String.Empty;
+            AllDone = false;
+
+            SongsToAnalyzeBatchDownloadReady = false;
+            SongsToAnalyzeBatchUploadReady = false;
+
+            UploadSkip = 0;
+            DownloadSkip = 0;
         }
+
 
         private EchoNestApi CreateApiInstance()
         {
             return new EchoNestApi("R2O4VVBVN5EFMCJRP", false);
         }
 
+        private bool PropertyNameMatchesEventName(string propertyName, string eventPropertyName)
+        {
+            return (String.IsNullOrEmpty(eventPropertyName)) ? true : String.Equals(propertyName, eventPropertyName); 
+        }
+
+        /// <summary>
+        /// This method will look at the state of this object and run the
+        /// remaining steps in the workflow to make sure the data is fully 
+        /// loaded. This is useful in situaltions where the model may get 
+        /// serialized and stored, and then needs to be able to resume 
+        /// loading based on its state.
+        /// </summary>
+        /// <param name="eventPropertyName">An optional eventPropertyName, 
+        /// to be used if this is attached as part of a property
+        /// changed handler. If not used as part of the handler, 
+        /// set this to null.</param>
+        public void RunWorkflow(string eventPropertyName)
+        {
+            if (!AllDone)
+            {
+                if (SongsToAnalyzeBatchUploadReady && 
+                    PropertyNameMatchesEventName("SongsToAnalyzeBatchUploadReady", eventPropertyName))
+                {
+                    ExecutionQueue.Enqueue(
+                        new WaitCallback(DownloadAnalyzedSongs),
+                        ExecutionQueue.Policy.Queued);
+                }
+                else
+                {
+                    if (SongsToAnalyzeBatchDownloadReady &&
+                        PropertyNameMatchesEventName("SongsToAnalyzeBatchDownloadReady", eventPropertyName))
+                    {
+                        ExecutionQueue.Enqueue(
+                               new WaitCallback(AnalyzeSongs),
+                               ExecutionQueue.Policy.Queued);
+                    }
+                    else
+                    {
+                        if (SongsToAnalyzeLoaded &&
+                            PropertyNameMatchesEventName("SongsToAnalyzeLoaded", eventPropertyName))
+                        {
+                            ExecutionQueue.Enqueue(
+                              new WaitCallback(DownloadAnalyzedSongsAlreadyInRemoteCatalog),
+                              ExecutionQueue.Policy.Queued);
+                        }
+                        else
+                        {
+                            if (!String.IsNullOrEmpty(CatalogId) &&
+                                SongsOnDeviceLoaded &&
+                                AnalyzedSongsLoaded &&
+                                (PropertyNameMatchesEventName("CatalogId", eventPropertyName) ||
+                                PropertyNameMatchesEventName("SongsOnDeviceLoaded", eventPropertyName) ||
+                                PropertyNameMatchesEventName("AnalyzedSongsLoaded", eventPropertyName)))
+                            {
+                                ExecutionQueue.Enqueue(
+                                    new WaitCallback(DiffSongs),
+                                    ExecutionQueue.Policy.Immediate);
+
+                            }
+                            else
+                            {
+                                // TODO Consider doing this only if we actually need to analyze songs
+                                if (String.IsNullOrEmpty(CatalogId) &&
+                                    PropertyNameMatchesEventName("CatalogId", eventPropertyName))
+                                {
+                                    ExecutionQueue.Enqueue(
+                                        new WaitCallback(LoadCatalogId),
+                                        ExecutionQueue.Policy.Immediate);
+                                }
+                                if (!SongsOnDeviceLoaded &&
+                                    PropertyNameMatchesEventName("SongsOnDeviceLoaded", eventPropertyName))
+                                {
+                                    ExecutionQueue.Enqueue(
+                                        new WaitCallback(GetSongsOnDevice),
+                                        ExecutionQueue.Policy.Immediate);
+                                }
+
+                                if (!AnalyzedSongsLoaded &&
+                                    PropertyNameMatchesEventName("AnalyzedSongsLoaded", eventPropertyName))
+                                {
+                                    ExecutionQueue.Enqueue(
+                                        new WaitCallback(GetAnalyzedSongs),
+                                        ExecutionQueue.Policy.Immediate);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+        }
+    
         public void GetSongsOnDevice(object state)
         {
             Dictionary<string, AnalyzedSong> uniqueSongs =
@@ -235,27 +301,23 @@ namespace BeatMachine.Model
                 }
                 SongsToAnalyzeLoaded = true;
             } else {
-                logger.Debug("No songs to analyze");
+                AllDone = true;
+                logger.Info("No songs left to analyze, all done");
             }
-
+            SongsOnDevice = null;
+            AnalyzedSongs = null;
+            AnalyzedSongIds = null;
             logger.Info("Completed DiffSongs");
         }
 
-
         public void AnalyzeSongs(object state)
         {
-            if (SongsToAnalyzeBatchDownloadReady)
-            {
-                SongsToAnalyzeBatchDownloadReady = false;
-            }
-
             EchoNestApi api = CreateApiInstance();
-
             api.CatalogUpdateCompleted += new EventHandler<EchoNestApiEventArgs>(
                 AnalyzeSongs_CatalogUpdateCompleted);
 
             List<CatalogAction<Song>> list = SongsToAnalyze
-                .Skip(uploadSkip * uploadTake)
+                .Skip(UploadSkip * uploadTake)
                 .Take(uploadTake)
                 .Select<AnalyzedSong, CatalogAction<Song>>(
                 (s) =>
@@ -268,35 +330,40 @@ namespace BeatMachine.Model
                 })
                 .ToList();
 
-            if (list.Count != 0)
+            api.CatalogUpdateAsync(new Catalog
             {
-                api.CatalogUpdateAsync(new Catalog
-                {
-                    Id = CatalogId,
-                    SongActions = list,
-                }, null, null);
+                Id = CatalogId,
+                SongActions = list,
+            }, null,
+            // Tell the callback that this was the last batch
+            (list.Count < uploadTake));
 
-                logger.Debug("Uploading {0} songs for analysis", list.Count);
-            }
-            else
-            {
-                SongsToAnalyzeBatchUploadReady = true;
-                logger.Info("Completed AnalyzeSongs");
-            }
+            logger.Debug("Uploading {0} songs for analysis", list.Count);
+
         }
 
         void AnalyzeSongs_CatalogUpdateCompleted(object sender, EchoNestApiEventArgs e)
         {
             if (e.Error == null)
             {
-                logger.Info("Upload completed, will retry for next batch");
-                uploadSkip++;
+                // If this was the last batch
+                if ((bool)e.UserState)
+                {
+                    SongsToAnalyzeBatchUploadReady = true;
+                    logger.Info("Completed AnalyzeSongs");
+                }
+                else
+                {
+                    UploadSkip++;
+                    AnalyzeSongsNeedsToRunAgain();
+                }
             }
             else
             {
                 logger.Error("Upload failed, retrying");
+                AnalyzeSongsNeedsToRunAgain();
+
             }
-            AnalyzeSongsNeedsToRunAgain();
         }
 
         private void AnalyzeSongsNeedsToRunAgain()
@@ -305,14 +372,13 @@ namespace BeatMachine.Model
                 ExecutionQueue.Policy.Queued);
         }
 
-
         public void DownloadAnalyzedSongsAlreadyInRemoteCatalog(object state)
         {
             EchoNestApi api = CreateApiInstance();
             api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(
                 DownloadAnalyzedSongsAlreadyInRemoteCatalog_CatalogReadCompleted);
 
-            string skip = (downloadSkip * downloadTake).ToString();
+            string skip = (DownloadSkip * downloadTake).ToString();
             api.CatalogReadAsync(CatalogId,
                 new Dictionary<string, string>
                 {
@@ -353,7 +419,7 @@ namespace BeatMachine.Model
                     return matches;
                 });
 
-            int analyzedCount = analyzedSongs.Count<AnalyzedSong>();
+            int analyzedCount = analyzedSongs.Count();
 
             logger.Debug("Matched {0} songs", analyzedCount);
 
@@ -391,21 +457,33 @@ namespace BeatMachine.Model
                     StoreDownloadedSongs(cat);
                 }
 
-                if (cat.Items.Count == downloadTake)
+                if (SongsToAnalyze.Count == 0)
                 {
-                    // We grabbed a full downloadTake number of items, so
-                    // there must be more items
-                    logger.Debug("Check if songs are already in remote catalog completed, " +
-                        "will run again since extra items are found");
-                    downloadSkip++;
-                    DownloadAnalyzedSongsAlreadyInRemoteCatalogNeedsToRunAgain();
+                    // Yay, we are done
+                    AllDone = true;
+                    logger.Info("No songs left to analyze, all done");
+                    logger.Info("Completed DownloadAnalyzedSongsAlreadyInRemoteCatalog");
                 }
                 else
                 {
-                    // If we grabbed less than that, then there are no more items
-                    logger.Info("Completed DownloadAnalyzedSongsAlreadyInRemoteCatalog");
-                    SongsToAnalyzeBatchDownloadReady = true;
-
+                    if (cat.Items.Count == downloadTake)
+                    {
+                        // We grabbed a full downloadTake number of items, so
+                        // there must be more items
+                        logger.Debug("Check if songs are already in remote catalog completed, " +
+                            "will run again since extra items are found");
+                        DownloadSkip++;
+                        DownloadAnalyzedSongsAlreadyInRemoteCatalogNeedsToRunAgain();
+                    }
+                    else
+                    {
+                        // Or it could be that we are done with the remote catalog, but we
+                        // still need to analyze some songs that weren't there, so we need
+                        // to go through with the rest of the process
+                        DownloadSkip = 0;
+                        SongsToAnalyzeBatchDownloadReady = true;
+                        logger.Info("Completed DownloadAnalyzedSongsAlreadyInRemoteCatalog");
+                    }
                 }
             }
             else
@@ -421,35 +499,23 @@ namespace BeatMachine.Model
                 new WaitCallback(DownloadAnalyzedSongsAlreadyInRemoteCatalog),
                ExecutionQueue.Policy.Queued);
         }
-    
+
         public void DownloadAnalyzedSongs(object state)
         {
-            if (SongsToAnalyzeBatchUploadReady)
-            {
-                // First time around in this batch download
-                SongsToAnalyzeBatchUploadReady = false;
-                downloadSkip = 0;
-            };
+            EchoNestApi api = CreateApiInstance();
+            api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(
+                DownloadAnalyzedSongs_CatalogReadCompleted);
 
-            if (SongsToAnalyze.Count != 0)
-            {
-                EchoNestApi api = CreateApiInstance();
-                api.CatalogReadCompleted += new EventHandler<EchoNestApiEventArgs>(
-                    DownloadAnalyzedSongs_CatalogReadCompleted);
+            string skip = (DownloadSkip * downloadTake).ToString();
 
-                string skip = (downloadSkip * downloadTake).ToString();
+            api.CatalogReadAsync(CatalogId, new Dictionary<string, string>{
+            {"bucket", "audio_summary"},
+            {"results", downloadTake.ToString()},
+            {"start", skip}
+            }, null);
 
-                api.CatalogReadAsync(CatalogId, new Dictionary<string, string>{
-                    {"bucket", "audio_summary"},
-                    {"results", downloadTake.ToString()},
-                    {"start", skip}
-                }, null);
-
-                logger.Debug("Started download of analyzed songs " +
-                    "skipping {0} and taking {1}", skip, downloadTake);
-            }
-
-            logger.Info("Completed DownloadAnalyzedSongs");
+            logger.Debug("Started download of analyzed songs " +
+                "skipping {0} and taking {1}", skip, downloadTake);
         }
 
         void DownloadAnalyzedSongs_CatalogReadCompleted(
@@ -462,24 +528,38 @@ namespace BeatMachine.Model
                 if (cat.Items.Count > 0)
                 {
                     StoreDownloadedSongs(cat);
+                }
 
+                if (SongsToAnalyze.Count == 0)
+                {
+                    // Yay, we are done
+                    AllDone = true;
+                    logger.Info("Completed DownloadAnalyzedSongs");
+                }
+                else
+                {
                     if (cat.Items.Count == downloadTake)
                     {
-                        downloadSkip++;
+                        // There are more songs to download, run again
+                        DownloadSkip++;                        
                     }
                     else
                     {
-                        downloadSkip = 0;
+                        // There are no more songs in the remote catalog, but
+                        // we still have unanalyzed songs. Sigh... start 
+                        // from the beginning
+                        DownloadSkip = 0;
                     }
                     logger.Debug("Download of analyzed songs completed, " +
-                        "will continue to run until all songs analyzed");
+                   "will continue to run until all songs analyzed");
+                    DownloadAnalyzedSongsNeedsToRunAgain();
                 }
             }
             else
             {
                 logger.Error("Download of analyzed songs failed, retrying");
+                DownloadAnalyzedSongsNeedsToRunAgain();
             }
-            DownloadAnalyzedSongsNeedsToRunAgain();
         }
 
         private void DownloadAnalyzedSongsNeedsToRunAgain()
@@ -634,16 +714,5 @@ namespace BeatMachine.Model
             ExecutionQueue.Enqueue(new WaitCallback(LoadCatalogId),
                 ExecutionQueue.Policy.Queued);
         }
-
-        protected void OnPropertyChanged(string name)
-        {
-            PropertyChangedEventHandler handler = PropertyChanged;
-            if (handler != null)
-            {
-                handler(this, new PropertyChangedEventArgs(name));
-            }
-        }
-
-        public event PropertyChangedEventHandler PropertyChanged;
     }
 }

@@ -17,6 +17,7 @@ using BeatMachine.EchoNest;
 using System.ComponentModel;
 using BeatMachine.Model;
 using NLog;
+using System.Windows.Threading;
 
 namespace BeatMachine
 {
@@ -64,20 +65,12 @@ namespace BeatMachine
                 PhoneApplicationService.Current.UserIdleDetectionMode = IdleDetectionMode.Disabled;
             }
 
+            SmartDispatcher.Initialize(Deployment.Current.Dispatcher);
+
             logger = LogManager.GetCurrentClassLogger();
+            
+            Model = new DataModel();
 
-        }
-
-        public Model.DataModel Model
-        {
-            get;
-            set;
-        }
-
-        // Code to execute when the application is launching (eg, from Start)
-        // This code will not execute when the application is reactivated
-        private void Application_Launching(object sender, LaunchingEventArgs e)
-        {
             // Create the database if it does not exist.
             using (BeatMachineDataContext db =
                 new BeatMachineDataContext(BeatMachineDataContext.DBConnectionString))
@@ -93,94 +86,57 @@ namespace BeatMachine
                 }
             }
 
-            Model = new Model.DataModel();
-            bool songsOnDeviceReady = false;
-            bool analyzedSongsReady = false;
-            bool catalogIdReady = false;
+        }
 
-            ExecutionQueue.Enqueue(
-                new WaitCallback(Model.GetAnalyzedSongs),
-                ExecutionQueue.Policy.Immediate);
-            ExecutionQueue.Enqueue(
-                new WaitCallback(Model.GetSongsOnDevice),
-                ExecutionQueue.Policy.Immediate);
-            ExecutionQueue.Enqueue(
-                new WaitCallback(Model.LoadCatalogId),
-                ExecutionQueue.Policy.Immediate);
-            Model.PropertyChanged += new PropertyChangedEventHandler(
-                (pSender, pE) =>
-                {
-                    if (String.Equals(pE.PropertyName, "CatalogId") &&
-                        !String.IsNullOrEmpty(Model.CatalogId))
-                    {
-                        catalogIdReady = true;
-                    }
-                    else if (String.Equals(pE.PropertyName, "SongsOnDeviceLoaded"))
-                    {
-                        songsOnDeviceReady = true;
-                    }
-                    else if (String.Equals(pE.PropertyName, "AnalyzedSongsLoaded"))
-                    {
-                        analyzedSongsReady = true;
-                    }
-                    if (catalogIdReady && songsOnDeviceReady && analyzedSongsReady)
-                    {
-                        ExecutionQueue.Enqueue(
-                            new WaitCallback(Model.DiffSongs),
-                            ExecutionQueue.Policy.Immediate);
+        public Model.DataModel Model
+        {
+            get;
+            set;
+        }
 
-                        // Make sure we only run this once
-                        catalogIdReady = false;
-                        songsOnDeviceReady = false;
-                        analyzedSongsReady = false;
-                    }
-                });
+        // Code to execute when the application is launching (eg, from Start)
+        // This code will not execute when the application is reactivated
+        private void Application_Launching(object sender, LaunchingEventArgs e)
+        {
+            Model.Initialize();
+
+            // Set up workflow through events on the model
             Model.PropertyChanged += new PropertyChangedEventHandler(
-                (pSender, pE) =>
+                (s, ev) =>
                 {
-                    if (String.Equals(pE.PropertyName, "SongsToAnalyzeLoaded"))
-                    {
-                        if ((pSender as DataModel).SongsToAnalyzeLoaded)
-                        {
-                            ExecutionQueue.Enqueue(
-                                new WaitCallback(Model.DownloadAnalyzedSongsAlreadyInRemoteCatalog),
-                                ExecutionQueue.Policy.Immediate);
-                        }
-                    }
-                    else if (String.Equals(pE.PropertyName, "SongsToAnalyzeBatchDownloadReady"))
-                    {
-                        if ((pSender as DataModel).SongsToAnalyzeBatchDownloadReady)
-                        {
-                            ExecutionQueue.Enqueue(
-                                new WaitCallback(Model.AnalyzeSongs),
-                                ExecutionQueue.Policy.Queued);
-                        }
-                    }
-                    else if (String.Equals(pE.PropertyName, "SongsToAnalyzeBatchUploadReady"))
-                    {
-                        if ((pSender as DataModel).SongsToAnalyzeBatchUploadReady)
-                        {
-                            ExecutionQueue.Enqueue(
-                                new WaitCallback(Model.DownloadAnalyzedSongs),
-                                ExecutionQueue.Policy.Queued);
-                        }
-                    }
+                    Model.RunWorkflow(ev.PropertyName);
                 });
+            Model.RunWorkflow(null);
         }
 
         // Code to execute when the application is activated (brought to foreground)
         // This code will not execute when the application is first launched
         private void Application_Activated(object sender, ActivatedEventArgs e)
         {
+            logger.Info("Application activated");
             if (!e.IsApplicationInstancePreserved)
             {
+                logger.Info("Instance was not preserved");
+
                 IDictionary<string, object> state =
                     PhoneApplicationService.Current.State;
 
                 if (state.ContainsKey("Model"))
                 {
-                    Model = (Model.DataModel)state["Model"];
+                    Model = (DataModel)state["Model"];
                 }
+
+                // Set up workflow through events on the model
+                Model.PropertyChanged += new PropertyChangedEventHandler(
+                    (s, ev) =>
+                    {
+                        Model.RunWorkflow(ev.PropertyName);
+                    });
+                Model.RunWorkflow(null);
+            }
+            else
+            {
+                logger.Info("Instance was preserved");
             }
         }
 
@@ -191,6 +147,7 @@ namespace BeatMachine
             IDictionary<string, object> state =
                  PhoneApplicationService.Current.State;
             state["Model"] = Model;
+            logger.Info("Application deactivated");
         }
 
         // Code to execute when the application is closing (eg, user hit Back)
