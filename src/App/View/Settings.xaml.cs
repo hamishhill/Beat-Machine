@@ -18,7 +18,7 @@ using System.Text;
 using Microsoft.Phone.Tasks;
 using System.Windows.Data;
 
-namespace BeatMachine
+namespace BeatMachine.View
 {
     public class BoolToReanalyzeButtonContentConverter : IValueConverter
     {

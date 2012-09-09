@@ -285,6 +285,9 @@ namespace BeatMachine.Model
 
         public void DiffSongs(object state)
         {
+            // TODO Need to handle case where they deleted some songs locally 
+            // but they are still in our database and we'll attempt to play them
+
             if (AnalyzedSongs.Count != SongsOnDevice.Count)
             {
                 logger.Debug("Found songs that need to be analyzed");

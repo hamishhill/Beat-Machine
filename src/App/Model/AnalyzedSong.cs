@@ -14,6 +14,9 @@ using System.ComponentModel;
 using System.Collections.ObjectModel;
 using BeatMachine.EchoNest.Model;
 using System.Text;
+using System.Linq;
+using MediaLibrary = Microsoft.Xna.Framework.Media.MediaLibrary;
+using MediaLibrarySong = Microsoft.Xna.Framework.Media.Song;
 
 namespace BeatMachine.Model
 {
@@ -200,6 +203,17 @@ namespace BeatMachine.Model
                 sb.AppendFormat("BPM: {0} ", AudioSummary.Tempo);
             }
             return sb.ToString();
+        }
+
+        public MediaLibrarySong ToMediaLibrarySong()
+        {
+            using(MediaLibrary library = new MediaLibrary()){
+                return library.Songs.Where(song =>
+                {
+                    return string.Equals(SongName, song.Name, StringComparison.InvariantCultureIgnoreCase) &&
+                        string.Equals(ArtistName , song.Artist.Name, StringComparison.InvariantCultureIgnoreCase);
+                }).FirstOrDefault();
+            }
         }
 
         #region INotifyPropertyChanged Members

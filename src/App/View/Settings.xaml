@@ -1,5 +1,5 @@
 ﻿<phone:PhoneApplicationPage 
-    x:Class="BeatMachine.Settings"
+    x:Class="BeatMachine.View.Settings"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:phone="clr-namespace:Microsoft.Phone.Controls;assembly=Microsoft.Phone"
@@ -13,7 +13,8 @@
     mc:Ignorable="d" d:DesignHeight="768" d:DesignWidth="480"
     shell:SystemTray.IsVisible="True"
     ApplicationBar = "{StaticResource AppBar}"
-    xmlns:local="clr-namespace:BeatMachine">
+    xmlns:local="clr-namespace:BeatMachine.View"
+    DataContext="{Binding Songs, Source={StaticResource Locator}}">
     <phone:PhoneApplicationPage.Resources>
         <local:BoolToReanalyzeButtonContentConverter x:Key="boolToReanalyzeButtonContentConverter" />
     </phone:PhoneApplicationPage.Resources>

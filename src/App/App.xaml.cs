@@ -18,6 +18,8 @@ using System.ComponentModel;
 using BeatMachine.Model;
 using NLog;
 using System.Windows.Threading;
+using GalaSoft.MvvmLight.Threading;
+using Microsoft.Xna.Framework;
 
 namespace BeatMachine
 {
@@ -66,6 +68,8 @@ namespace BeatMachine
             }
 
             SmartDispatcher.Initialize(Deployment.Current.Dispatcher);
+            DispatcherHelper.Initialize();
+
 
             logger = LogManager.GetCurrentClassLogger();
             
@@ -85,6 +89,9 @@ namespace BeatMachine
                     logger.Info("Database exists already");
                 }
             }
+
+            // To make MediaPlayer.Play work according to VS error link
+            this.ApplicationLifetimeObjects.Add(new XNAAsyncDispatcher(TimeSpan.FromMilliseconds(50)));
 
         }
 
@@ -214,12 +221,31 @@ namespace BeatMachine
 
         private void PlayApplicationBarButton_Click(object sender, EventArgs e)
         {
-            RootFrame.Navigate(new Uri("/Play.xaml", UriKind.RelativeOrAbsolute));
+            RootFrame.Navigate(new Uri("/View/Play.xaml", UriKind.RelativeOrAbsolute));
+        }
+
+        private void SongsApplicationBarButton_Click(object sender, EventArgs e)
+        {
+            RootFrame.Navigate(new Uri("/View/Songs.xaml", UriKind.RelativeOrAbsolute));
         }
 
         private void SettingsApplicationBarButton_Click(object sender, EventArgs e)
         {
-            RootFrame.Navigate(new Uri("/Settings.xaml", UriKind.RelativeOrAbsolute));
+            RootFrame.Navigate(new Uri("/View/Settings.xaml", UriKind.RelativeOrAbsolute));
         }
+    }
+
+    public class XNAAsyncDispatcher : IApplicationService
+    {
+        private DispatcherTimer frameworkDispatcherTimer;
+
+        public XNAAsyncDispatcher(TimeSpan dispatchInterval) { this.frameworkDispatcherTimer = new DispatcherTimer();
+            this.frameworkDispatcherTimer.Tick += new EventHandler(frameworkDispatcherTimer_Tick);
+            this.frameworkDispatcherTimer.Interval = dispatchInterval;
+        }
+
+        void IApplicationService.StartService(ApplicationServiceContext context) { this.frameworkDispatcherTimer.Start(); }   
+        void IApplicationService.StopService() { this.frameworkDispatcherTimer.Stop(); }   
+        void frameworkDispatcherTimer_Tick(object sender, EventArgs e) { FrameworkDispatcher.Update(); }
     }
 }
